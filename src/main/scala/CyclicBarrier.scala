@@ -1,6 +1,5 @@
 import DebugUtil.Ops
 import cats.effect.{Deferred, IO, Ref}
-import cats.implicits.catsSyntaxParallelTraverse1
 
 trait CyclicBarrier {
   def await(id: Int): IO[Unit]
@@ -13,11 +12,11 @@ object CyclicBarrier {
 
   private def createInitialState(count: Int): IO[Ref[IO, State]] = for {
     signal <- createNewSignal
-    ref <- IO.ref(State(Nil))
+    ref <- IO.ref(State(count, signal))
   } yield ref
 
-  private case class State(signals: List[Signal]) {
-    def addedSignal(s: Signal): State = this.copy(signals = s :: this.signals)
+  private case class State(count: Int, signal: Signal) {
+    def countDown: State = this.copy(count = this.count - 1)
   }
 
   def apply(count: Int): IO[CyclicBarrier] = for {
@@ -26,10 +25,10 @@ object CyclicBarrier {
     new CyclicBarrier {
       override def await(id: Int): IO[Unit] = createNewSignal.flatMap { newSignal =>
         initialState.modify {
-          case State(signals) if signals.size == count - 1 =>
-            State(Nil) -> (IO(s"[Task $id] release defer c=${signals.size}").debug >> signals.parTraverse(_.complete()).void)
+          case State(1, signal) =>
+            State(count, newSignal) -> (IO(s"[Task $id] release ${signal.hashCode()}. Newsignal ${newSignal.hashCode()}").debug >> signal.complete()).void
           case state =>
-            state.addedSignal(newSignal) -> (IO(s"[Task $id] block").debug >> newSignal.get)
+            state.countDown -> (IO(s"[Task $id] block by ${state.signal.hashCode()}").debug >> state.signal.get)
         }.flatten
       }
     }
