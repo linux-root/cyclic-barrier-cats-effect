@@ -11,12 +11,12 @@ object CyclicBarrier {
 
   val createNewSignal: IO[Signal] = IO.deferred[Unit]
 
-  def createInitialState(count: Int): IO[Ref[IO, State]] = for {
+  private def createInitialState(count: Int): IO[Ref[IO, State]] = for {
     signal <- createNewSignal
     ref <- IO.ref(State(Nil))
   } yield ref
 
-  case class State(signals: List[Signal]) {
+  private case class State(signals: List[Signal]) {
     def addedSignal(s: Signal): State = this.copy(signals = s :: this.signals)
   }
 
